@@ -92,11 +92,18 @@ def get_chat_model(stack, model=None):
     if stack == "claude":
         from langchain_anthropic import ChatAnthropic
 
-        return ChatAnthropic(model=model or CHAT_MODELS["claude"], max_tokens=MAX_TOKENS)
+        # `model=`/`max_tokens=` are the documented kwargs, but they're pydantic
+        # *aliases* (fields: model_name, max_tokens_to_sample) — pyright's
+        # synthesized __init__ only sees the field names, while runtime accepts
+        # both (populate_by_name). Keep the canonical spelling, quiet the checker.
+        model = model or CHAT_MODELS["claude"]
+        return ChatAnthropic(model=model, max_tokens=MAX_TOKENS)  # pyright: ignore[reportCallIssue]
     if stack == "openai":
         from langchain_openai import ChatOpenAI
 
-        return ChatOpenAI(model=model or CHAT_MODELS["openai"], max_tokens=MAX_TOKENS)
+        # same alias story as ChatAnthropic above
+        model = model or CHAT_MODELS["openai"]
+        return ChatOpenAI(model=model, max_tokens=MAX_TOKENS)  # pyright: ignore[reportCallIssue]
     raise SystemExit(
         f"PROVIDER={stack!r} is not recognized. Use mock, claude, or openai."
     )
