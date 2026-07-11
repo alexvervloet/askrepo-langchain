@@ -39,6 +39,15 @@ for pkg in (
     except ImportError:
         check(f"package: {pkg}", False, "pip install -r requirements.txt")
 
+# The durable checkpointer (phase-3 resume) is a submodule of a SEPARATE package
+# from langgraph itself — check it explicitly so a missing install is caught here.
+try:
+    __import__("langgraph.checkpoint.sqlite")
+    check("durable checkpointer: langgraph.checkpoint.sqlite", True)
+except ImportError:
+    check("durable checkpointer: langgraph.checkpoint.sqlite", False,
+          "pip install langgraph-checkpoint-sqlite")
+
 # Phases 1–2 reuse the capstone's corpus and gold questions verbatim.
 capstone = Path(__file__).parent.parent / "DeepDives" / "deep-dive-capstone"
 check(
