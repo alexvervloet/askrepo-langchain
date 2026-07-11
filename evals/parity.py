@@ -45,7 +45,7 @@ import run_evals as R  # noqa: E402  score_citations, path_matches_any, judge, J
 # --- askrepo pipeline (the from-scratch column) ------------------------------
 from askrepo.answer import prepare as askrepo_prepare  # noqa: E402
 from askrepo.prompts import DECLINE_PHRASE  # noqa: E402
-from askrepo.providers import cost_usd, get_provider  # noqa: E402
+from askrepo.providers import get_provider  # noqa: E402
 
 # --- asklc pipeline (the framework column) -----------------------------------
 from asklc.prompt import PROMPT  # noqa: E402

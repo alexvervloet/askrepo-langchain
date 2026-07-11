@@ -18,25 +18,25 @@ Region note (see PLAN gotchas): the account is APAC-sharded, so
 LANGSMITH_ENDPOINT must point at apac.* or every call 403s. Set here explicitly.
 """
 
+import json
 import os
 import sys
 import time
 
-# Tracing must be configured BEFORE the chain runs. The API key rides in from
-# secrun; everything else we set explicitly so the run is reproducible.
+# Tracing must be configured BEFORE the langchain imports below, so the tracer
+# sees these at setup. The API key rides in from secrun; everything else we set
+# explicitly so the run is reproducible.
 os.environ.setdefault("LANGSMITH_TRACING", "true")
 os.environ.setdefault("LANGSMITH_ENDPOINT", "https://apac.api.smith.langchain.com")
 os.environ.setdefault("LANGSMITH_PROJECT", "asklc-phase4")
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import json
+from langchain_core.tracers.context import collect_runs  # noqa: E402
+from langchain_core.tracers.langchain import wait_for_all_tracers  # noqa: E402
+from langsmith import Client  # noqa: E402
 
-from langchain_core.tracers.context import collect_runs
-from langchain_core.tracers.langchain import wait_for_all_tracers
-from langsmith import Client
-
-from asklc.rag import load_store, make_chain
+from asklc.rag import load_store, make_chain  # noqa: E402
 
 QUESTION = "Which deep dive covers barge-in, and what is barge-in?"
 OUT = os.path.join(os.path.dirname(__file__), "trace-sample.json")
