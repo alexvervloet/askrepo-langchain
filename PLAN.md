@@ -121,13 +121,38 @@ Correctness (0.814 vs 0.800) is inside the judge's own nondeterminism — the
 ## Phase 3 — agent on LangGraph (done when parity + resume both work)
 
 Port the v05-agent tool loop to a `StateGraph`: explicit nodes for
-plan/act/observe, tools bound to the model, checkpointer on.
+plan/act/observe, tools bound to the model, checkpointer on. The tools and the
+read-only boundary are askrepo's, reused verbatim (asklc/agent.py imports
+`run_tool` + `default_harness`), so the *only* variable is who runs the loop.
 
-- [ ] the agent completes the same tasks the capstone's hand-rolled loop does
-- [ ] kill the process mid-run, restart, and **resume from the checkpoint** —
-      the thing the hand-rolled loop can't do; demo it honestly
-- [ ] capability table: loop control / retries / persistence / streaming —
-      hand-rolled vs LangGraph, with what each cost to get
+- [x] **the agent completes the same tasks** — real gpt-4o-mini run answers the
+      gold questions through plan→act→observe with citations (e.g. "barge-in" in
+      3 tool calls; the all-zero cosine_similarity question — which RAG made
+      askrepo *decline* in phase 2 — the agent answers by grepping store.py).
+- [x] **kill mid-run, resume from the checkpoint** — `asklc/resume_demo.py`,
+      keyless and deterministic, in two separate processes sharing one SQLite
+      file: process 1 runs a real grep, checkpoints 4 messages, exits paused
+      before `reason`; process 2 (different pid, empty memory, fresh model)
+      recovers the 4 messages from disk and finishes. The hand-rolled loop keeps
+      `messages` in a local variable — kill it and the task is gone.
+- [x] **capability table** (below).
+
+### Capability table — hand-rolled `while` vs LangGraph `StateGraph`
+
+| capability | askrepo (hand-rolled) | LangGraph | what it cost to get |
+|---|---|---|---|
+| loop control | explicit `while n_calls < MAX` + a final forced-answer turn (~12 lines) | conditional edges + a `recursion_limit` safety net; the tool budget is still hand-tracked in state | ~a wash on LOC. LangGraph throws a `GraphRecursionError` for free if you forget a budget; you still write the budget itself |
+| retries | none on the agent step — a transient API error kills the answer (askrepo has `with_retry` for embeddings only) | `add_node(..., retry_policy=RetryPolicy(max_attempts=n))`, plus `cache_policy` and `timeout`, as one-liner kwargs (verified in `langgraph.types`) | LangGraph: one kwarg per node. Hand-rolled: wrap each call yourself |
+| persistence / resume | **none** — state is a Python variable; process death = lost task | checkpoint after every super-step; `SqliteSaver` = durable cross-process resume, **proven in two processes** | the headline win. Cost: one extra dep (`langgraph-checkpoint-sqlite`) + choosing a `thread_id`. The `while` loop can't get this without hand-building a serializer |
+| streaming | `provider.complete` streams tokens; the agent path uses non-streamed `step` turns | `graph.stream()` streams state per node for free; token-level needs `astream_events` | comparable; LangGraph gives node-level progress for nothing |
+| observability / replay | `AuditLog` + structured trace, hand-written | `get_state` / `get_state_history` replay every checkpoint (time-travel); LangSmith traces each node | LangGraph gives checkpoint time-travel for free — phase-4 territory |
+
+**Net:** LangGraph bought durable persistence/resume (the capability the
+hand-rolled loop *structurally* cannot have), plus per-node retry/timeout/cache
+and state-level streaming as one-liners. It cost a heavier mental model
+(StateGraph, reducers, super-steps), a separate package for a *durable*
+checkpointer, and you still write the loop-budget logic yourself. Tool execution
+and the security boundary were a straight reuse — identical in both.
 
 ## Phase 4 — observability (stretch)
 
@@ -220,3 +245,26 @@ one doesn't, in three sentences and a screenshot.
   pipelines back-to-back with a single shared gpt-4o-mini judge, so the two
   columns can't drift on grader or corpus — the only variable is the pipeline.
   Cost of one full run: ~$0.05 (80 answers + ~64 judge calls). (phase 2)
+
+- **A durable checkpointer is a SEPARATE package.** `langgraph` ships
+  `MemorySaver` (in `langgraph-checkpoint`), which is in-memory — kill the
+  process and the "checkpoint" is gone, so it can't demonstrate the one thing
+  that matters vs the hand-rolled loop. Cross-process resume needs
+  `langgraph-checkpoint-sqlite` (`SqliteSaver`), a separate install. The
+  headline capability is real but it is not in the box you `pip install
+  langgraph` for. (phase 3)
+
+- **`SqliteSaver` wants an explicit connection for a long-lived graph.**
+  `SqliteSaver.from_conn_string(path)` is a *context manager* — fine for a
+  with-block, wrong for "build the graph, hand it around, resume later in
+  another process." Construct `sqlite3.connect(path, check_same_thread=False)`
+  and wrap it: `SqliteSaver(conn)`. `check_same_thread=False` because the saver
+  may touch the connection from a worker thread. (phase 3)
+
+- **Resuming is `invoke(None, config)`, and `interrupt_after` marks the pause.**
+  Non-obvious from the docs: to *continue* a checkpointed run you invoke the
+  graph with input `None` and the same `thread_id` — passing the state back in
+  would restart it. To stop at a clean boundary for the demo,
+  `compile(interrupt_after=["act"])` halts right after the observation is
+  persisted, with `get_state(config).next` showing the node it will resume
+  into. (phase 3)
