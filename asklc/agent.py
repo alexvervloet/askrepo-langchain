@@ -22,11 +22,11 @@ talking. Here the *only* thing that changed is who runs the loop — a hand-roll
 comparison.
 """
 
-import os
 import sys
 from typing import Annotated, Optional, TypedDict
 
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
@@ -136,7 +136,7 @@ def build_agent(model, harness, touched, checkpointer, interrupt_after=None):
     return graph.compile(checkpointer=checkpointer, interrupt_after=interrupt_after or [])
 
 
-def initial_state(question):
+def initial_state(question) -> AgentState:
     """The opening messages, using askrepo's agent system prompt verbatim."""
     A, _ = _askrepo()
     return {
@@ -159,7 +159,7 @@ def answer(question, corpus_root, model, checkpointer, thread_id="agent"):
     harness = H.default_harness(corpus_root)
     touched = set()
     app = build_agent(model, harness, touched, checkpointer)
-    config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 50}
+    config: RunnableConfig = {"configurable": {"thread_id": thread_id}, "recursion_limit": 50}
     final = app.invoke(initial_state(question), config)
     text = final["messages"][-1].content
     return text, sorted(touched), final["n_calls"]

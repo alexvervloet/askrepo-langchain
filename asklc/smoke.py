@@ -14,7 +14,7 @@ from langchain_core.embeddings import DeterministicFakeEmbedding
 from langchain_core.language_models import FakeListChatModel
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
+from langchain_core.runnables import RunnableConfig, RunnablePassthrough
 from langchain_core.vectorstores import InMemoryVectorStore
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
@@ -83,8 +83,10 @@ graph.add_edge("retrieve", "respond")
 graph.add_edge("respond", END)
 
 app = graph.compile(checkpointer=MemorySaver())
-config = {"configurable": {"thread_id": "smoke"}}
-result = app.invoke({"question": "what is the agent loop?"}, config)
+config: RunnableConfig = {"configurable": {"thread_id": "smoke"}}
+result = app.invoke(
+    State(question="what is the agent loop?", context="", answer=""), config
+)
 
 assert result["answer"].startswith("[FAKE]")
 snapshot = app.get_state(config)

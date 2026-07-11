@@ -22,6 +22,7 @@ import sqlite3
 import sys
 
 from langchain_core.messages import AIMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from asklc.agent import build_agent, initial_state
@@ -30,6 +31,7 @@ from asklc.config import CORPUS_ROOT, HERE
 CORPUS = CORPUS_ROOT
 DB_PATH = os.path.join(HERE, ".agent-resume.sqlite")
 THREAD = "resume-demo"
+CONFIG: RunnableConfig = {"configurable": {"thread_id": THREAD}, "recursion_limit": 50}
 QUESTION = "Which deep dive covers barge-in?"
 
 
@@ -73,10 +75,9 @@ def start():
     touched = set()
     # interrupt_after=["act"]: stop the instant the observation is checkpointed.
     app = build_agent(model, _harness(), touched, _saver(), interrupt_after=["act"])
-    config = {"configurable": {"thread_id": THREAD}, "recursion_limit": 50}
-    app.invoke(initial_state(QUESTION), config)
+    app.invoke(initial_state(QUESTION), CONFIG)
 
-    state = app.get_state(config)
+    state = app.get_state(CONFIG)
     print(f"[start] pid {os.getpid()} — ran {state.values['n_calls']} tool call(s), "
           f"grepped files: {sorted(touched)}")
     print(f"[start] checkpoint has {len(state.values['messages'])} messages; "
@@ -94,16 +95,15 @@ def resume():
                           "(realtime-voice-deep-dive/README.md:1).")
     )
     app = build_agent(model, _harness(), set(), _saver())
-    config = {"configurable": {"thread_id": THREAD}, "recursion_limit": 50}
 
-    before = app.get_state(config)
+    before = app.get_state(CONFIG)
     if not before.values:
         raise SystemExit("Checkpoint empty — did `start` run in this same repo?")
     print(f"[resume] pid {os.getpid()} — recovered {len(before.values['messages'])} "
           f"messages from disk, {before.values['n_calls']} tool call(s) already done")
     print(f"[resume] paused before node: {before.next} — continuing…")
 
-    final = app.invoke(None, config)  # None = resume from the checkpoint
+    final = app.invoke(None, CONFIG)  # None = resume from the checkpoint
     print(f"[resume] FINAL ANSWER: {final['messages'][-1].content}")
 
 
