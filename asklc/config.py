@@ -53,3 +53,12 @@ def load_config():
 # same way askrepo's ASKREPO_INDEX does, so eval runs can keep both on disk.
 CHROMA_DIR = os.getenv("ASKLC_CHROMA") or os.path.join(HERE, ".chroma")
 COLLECTION = "asklc"
+
+# The capstone this project ports and compares against, and the corpus it
+# indexes. Both default to a sibling checkout — the layout the README documents
+# (../DeepDives/deep-dive-capstone next to this repo) — and are overridable via
+# env for any other arrangement, so nothing hard-codes a personal path.
+CAPSTONE_ROOT = os.getenv("ASKLC_CAPSTONE") or os.path.normpath(
+    os.path.join(HERE, "..", "DeepDives", "deep-dive-capstone")
+)
+CORPUS_ROOT = os.getenv("ASKLC_CORPUS") or os.path.dirname(CAPSTONE_ROOT)

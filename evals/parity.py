@@ -30,10 +30,12 @@ import statistics
 import sys
 import time
 
-CAP = "/Users/alex/Documents/WebDev/AI/DeepDives/deep-dive-capstone"
-CORPUS = "/Users/alex/Documents/WebDev/AI/DeepDives"
-# repo root (asklc lives here), then the capstone + its evals dir
+# repo root first (so asklc.config resolves the sibling-checkout paths), then
+# the capstone + its evals dir for the shared pipeline/grader imports.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from asklc.config import CAPSTONE_ROOT as CAP  # noqa: E402
+from asklc.config import CORPUS_ROOT as CORPUS  # noqa: E402
+
 sys.path.insert(0, CAP)
 sys.path.insert(0, os.path.join(CAP, "evals"))
 

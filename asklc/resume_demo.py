@@ -25,9 +25,9 @@ from langchain_core.messages import AIMessage
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from asklc.agent import build_agent, initial_state
-from asklc.config import HERE
+from asklc.config import CORPUS_ROOT, HERE
 
-CORPUS = "/Users/alex/Documents/WebDev/AI/DeepDives"
+CORPUS = CORPUS_ROOT
 DB_PATH = os.path.join(HERE, ".agent-resume.sqlite")
 THREAD = "resume-demo"
 QUESTION = "Which deep dive covers barge-in?"

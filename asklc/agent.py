@@ -32,7 +32,8 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
 # Reuse the capstone's tools + harness so the boundary is byte-identical.
-CAPSTONE = "/Users/alex/Documents/WebDev/AI/DeepDives/deep-dive-capstone"
+# Path resolves to a sibling checkout by default; override with ASKLC_CAPSTONE.
+from asklc.config import CAPSTONE_ROOT as CAPSTONE
 
 
 def _askrepo():
