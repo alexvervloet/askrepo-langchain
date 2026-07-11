@@ -74,17 +74,49 @@ in the table above came from source, not the component's docstring:
 
 ## Phase 2 — eval parity (done when both columns are filled)
 
-Run the capstone's gold questions against both implementations.
+Run the capstone's gold questions against both implementations. Measured the
+fair way: both answer with gpt-4o-mini at k=5, over the same DeepDives corpus,
+with askrepo keeping its real hybrid retrieval (blend=0.7) and asklc using the
+stock vector retriever — because "the framework default is vector-only" *is*
+the difference. One shared gpt-4o-mini judge grades both (evals/parity.py,
+run 2026-07-11, evals/parity.run.json).
 
 | metric | askrepo | asklc (LangChain) |
 |---|---|---|
-| gold questions passed | | |
-| avg retrieval hit (gold chunk in context) | | |
-| tokens per answer (p50) | | |
+| gold questions passed (mean judge score, 32 answerable) | **0.814** | **0.800** |
+| decline accuracy (8 negative questions) | 1.000 | 1.000 |
+| avg retrieval hit (gold chunk in context) | **0.857** | **0.857** |
+| tokens per answer, p50 (in+out) | 2546 | 2419 |
+| citation resolve / match | 0.881 / 0.667 | 0.951 / 0.732 |
 
-If the scores differ, diagnose *why* (chunking? retrieval? prompt template?)
-before moving on — the diagnosis is the most valuable paragraph in
-COMPARISON.md.
+Per category (askrepo / asklc): locator 0.96/0.96, concept 1.00/0.90,
+code 0.56/**0.63**, cross-dive 0.50/0.50.
+
+**Diagnosis — the aggregate parity is real but coincidental.** hit@k is
+identical to three decimals, yet **12 of 40 questions behave differently** on
+hit or correctness; the differences offset. Two mechanisms pull in opposite
+directions, both traced to concrete questions:
+
+1. *askrepo's BM25 hybrid wins* when the answer lives in a specific file named
+   by exact terms that vector search buries. `code-07` ("when does the agent
+   loop stop?"): asklc's vector-only retriever returned the *same README five
+   times* (no diversity) and declined; askrepo's keyword blend surfaced
+   `agents-deep-dive/EXERCISES.md:65` and answered. Same shape on `con-10`.
+2. *asklc's larger RCTS chunks win* when the answer is one line inside a
+   function that askrepo's per-`def` chunking splits away from the retrieved
+   chunk. `code-03` (cosine_similarity on an all-zero vector): asklc's
+   1500-char chunk kept the whole function — guard clause included — and cited
+   `rag-deep-dive/rag/store.py:34`; askrepo retrieved a *different* slice of the
+   same file, missed the `if norm_a == 0` line, and declined.
+
+So the framework's stock vector RAG *matched* a hand-tuned hybrid here — not
+because the pipelines are equivalent, but because coarser chunking and weaker
+retrieval traded wins question-for-question. asklc even edges citation quality
+(0.951 vs 0.881 resolve): bigger chunks carry a wider, correctly-numbered line
+span, so a cited line lands inside a real chunk more often; askrepo's tight
+chunks + windowing occasionally cite a line just past the retrieved span.
+Correctness (0.814 vs 0.800) is inside the judge's own nondeterminism — the
+*signal* is the per-question churn and its two named causes, not the tie.
 
 ## Phase 3 — agent on LangGraph (done when parity + resume both work)
 
@@ -165,3 +197,26 @@ one doesn't, in three sentences and a screenshot.
   chain. A real Voyage/Claude run is deferred to phase 2, where eval parity
   actually needs it; the mapping/defaults analysis above (this phase's DoD)
   came from reading installed source, not from a paid run.
+
+- **Vector-only retrieval fails silently by returning duplicates.** On
+  `code-07` the stock `as_retriever(k=5)` returned the *same README chunk five
+  times* — five near-identical vectors, no diversity — and the answer declined
+  because the actual source file never made the top 5. askrepo's BM25 blend
+  breaks that tie with a keyword signal; the LangChain equivalent is
+  `search_type="mmr"` (maximal-marginal-relevance) or a post-retrieval dedupe,
+  neither of which is the default. If you take the default retriever, budget
+  for this. (phase 2)
+
+- **Coarser chunks can beat finer ones — RCTS ~tied askrepo's structural
+  chunker.** Intuition said askrepo's one-object-per-chunk splitting would win;
+  in practice RCTS's 1500-char chunks sometimes won by keeping a whole function
+  (guard clauses included) in a single retrievable unit, where the structural
+  chunker split the answer line into a neighbouring chunk that didn't get
+  retrieved. Structure-awareness is not free accuracy. (phase 2)
+
+- **Eval parity was measured in ONE process, not against the frozen baseline.**
+  The capstone's `baseline.run.json` predates this comparison and used a
+  possibly different judge/corpus SHA. `evals/parity.py` re-runs *both*
+  pipelines back-to-back with a single shared gpt-4o-mini judge, so the two
+  columns can't drift on grader or corpus — the only variable is the pipeline.
+  Cost of one full run: ~$0.05 (80 answers + ~64 judge calls). (phase 2)
