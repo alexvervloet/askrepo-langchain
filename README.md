@@ -45,6 +45,9 @@ secrun python -m asklc ask "where is retrieval implemented?"
 
 - `asklc/` — the port (grows phase by phase; see [PLAN.md](PLAN.md))
 - `COMPARISON.md` — the write-up this project exists to produce
+- [`LESSONS.md`](LESSONS.md) — engineering lessons from the port (framework
+  defaults, coincidental eval parity, durable persistence, bought vs hand-rolled
+  tracing)
 - corpus + gold questions are **reused from the capstone**
   (`../DeepDives/deep-dive-capstone/fixtures/` and `evals/`) so both
   implementations are judged on identical inputs
