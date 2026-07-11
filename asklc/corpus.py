@@ -54,7 +54,7 @@ CHUNK_SIZE = 1500     # chars ≈ askrepo's 60-line cap for typical code/prose
 CHUNK_OVERLAP = 200   # chars ≈ askrepo's 10-line window overlap
 
 
-def load_documents(corpus_root):
+def load_documents(corpus_root, extra_skip_dirs=frozenset()):
     """Walk the corpus and load every .md/.py file as a LangChain Document.
 
     Uses LangChain's `TextLoader` per file — a real framework loader — but the
@@ -63,11 +63,17 @@ def load_documents(corpus_root):
     more fighting than just calling os.walk, and this way the corpus is provably
     identical. Metadata["source"] is the path *relative* to the corpus root, so
     citations read the same as askrepo's (README.md:10, not /abs/path/README.md).
+
+    `extra_skip_dirs` extends SKIP_DIRS by basename — phase 2 uses it to exclude
+    the capstone's own repo, exactly as askrepo excludes itself, so both
+    implementations index the identical file set ("the corpus is the series,
+    not the tool").
     """
     corpus_root = os.path.abspath(corpus_root)
+    skip = SKIP_DIRS | set(extra_skip_dirs)
     docs = []
     for dirpath, dirnames, filenames in os.walk(corpus_root):
-        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
+        dirnames[:] = sorted(d for d in dirnames if d not in skip)
         for name in sorted(filenames):
             if os.path.splitext(name)[1] not in INDEXED_EXTENSIONS:
                 continue

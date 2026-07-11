@@ -45,15 +45,18 @@ META_PATH = os.path.join(CHROMA_DIR, "asklc-meta.json")
 
 # --- embed + store -----------------------------------------------------------
 
-def build_index(corpus_root, stack):
+def build_index(corpus_root, stack, extra_skip_dirs=frozenset()):
     """Load, chunk, embed and persist the corpus as a Chroma collection.
 
     Returns (n_files, n_chunks). askrepo returns token/cost too; LangChain's
     embeddings don't surface a token count through this path, which is itself a
     finding — the from-scratch version prices every index build, the framework
     one can't without reaching past the abstraction. Recorded, not faked.
+
+    `extra_skip_dirs` is forwarded to the loader (phase 2 excludes the capstone
+    repo so the corpus matches askrepo's exactly).
     """
-    docs = load_documents(corpus_root)
+    docs = load_documents(corpus_root, extra_skip_dirs=extra_skip_dirs)
     chunks = chunk_documents(docs)
     if not chunks:
         raise SystemExit(f"No .md or .py files found under {corpus_root!r}.")
