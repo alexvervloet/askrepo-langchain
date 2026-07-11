@@ -1,0 +1,16 @@
+# LangChain releases move fast; no upper pins here — instead the exact
+# installed versions are recorded in PLAN.md phase 0, because the churn is
+# part of what this project measures.
+
+langchain            # chains, retrievers, LCEL
+langgraph            # the stateful agent layer (phase 3)
+langchain-chroma     # vector store for the RAG port (phase 1)
+
+# Providers — same contract as askrepo (PROVIDER=claude|openai).
+# Keyless smoke (phase 0) needs NONE of these to do anything real:
+# it runs on langchain-core's fake models.
+langchain-anthropic  # claude stack (chat)
+langchain-voyageai   # claude stack (embeddings — Anthropic has no first-party)
+langchain-openai     # openai stack (chat + embeddings)
+
+python-dotenv        # non-secret config only; keys stay in the Keychain (secrun)
