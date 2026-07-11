@@ -15,15 +15,47 @@ difference in behavior is attributable to the framework.
 
 ## What the framework bought
 
-*(evidence, not vibes: LOC deltas, components swapped with one line,
-checkpoint/resume demo from phase 3, anything the hand-rolled version simply
-doesn't have)*
+- **Durable agent state — the one thing the hand-rolled loop structurally
+  can't have.** askrepo's agent keeps its conversation in a local `messages`
+  variable; kill the process and the task is gone. The LangGraph port checkpoints
+  after every super-step, and with `SqliteSaver` that survives the process. Proven
+  in two separate processes (`asklc/resume_demo.py`): process 1 runs a real tool
+  call, checkpoints, and exits mid-task; process 2 — different pid, empty memory,
+  fresh model — recovers the state from disk and finishes. This is not a LOC
+  saving; it is a capability that wasn't reachable before without hand-building a
+  serializer.
+- **Per-node retry / timeout / cache as one-liner kwargs.** `add_node(...,
+  retry_policy=RetryPolicy(max_attempts=n))` (verified in `langgraph.types`),
+  where askrepo hand-wrote `with_retry` and applied it to embeddings only.
+- **Components swapped in one line.** The whole RAG pipeline is an LCEL
+  expression (`retrieve | prompt | model | parse`); swapping Chroma, the
+  embedder, or the chat model is a one-object change, vs askrepo's hand-written
+  index format + provider classes.
+- **Free plumbing:** query `input_type` auto-set for Voyage, `graph.stream()`
+  node-level progress, `get_state_history` checkpoint time-travel — all things
+  askrepo wrote by hand or doesn't have. (Full capability table in PLAN.md
+  phase 3.)
 
 ## What the framework cost
 
-*(evidence again: defaults that had to be hunted down in source, abstraction
-layers crossed while debugging, version churn encountered during the project
-itself, anything that was harder than the hand-rolled equivalent)*
+- **Silent defaults that were wrong for the task, found only in source.** Chroma
+  ranks by **L2, not cosine** (buried in chromadb, not surfaced by
+  `langchain-chroma`) — it changes rankings, not just numbers; the retriever
+  defaults to **k=4** not 5; `RecursiveCharacterTextSplitter` tracks **no
+  position** unless you opt in, and then it's a char offset, not a line. Every
+  one came from reading installed source, not docs (PLAN.md phase 1).
+- **No hybrid retrieval in the box.** askrepo's BM25+vector blend has no default
+  analogue; the stock retriever is vector-only and, on `code-07`, returned the
+  *same README five times* and declined a question askrepo answered. Matching it
+  means wiring `EnsembleRetriever` + `BM25Retriever` yourself.
+- **Version churn during the project itself.** The canonical `TextLoader` lives
+  in `langchain-community`, which prints a "being sunset / no longer maintained"
+  warning on import. A *durable* checkpointer is a separate package
+  (`langgraph-checkpoint-sqlite`) from the `langgraph` you install. You feel the
+  ecosystem moving while you build on it.
+- **Lost visibility.** `Embeddings.embed_documents` returns only vectors — the
+  per-build token/cost line askrepo prints can't be reproduced without bypassing
+  the abstraction and re-tokenizing.
 
 ## Eval results
 
