@@ -35,6 +35,13 @@ difference in behavior is attributable to the framework.
   node-level progress, `get_state_history` checkpoint time-travel — all things
   askrepo wrote by hand or doesn't have. (Full capability table in PLAN.md
   phase 3.)
+- **A bought trace vs a hand-rolled one.** With `LANGSMITH_TRACING=true` and no
+  instrumentation of ours, LangSmith captured all 9 runnables of the RAG chain
+  nested, with per-step inputs/outputs, tokens and auto-priced cost, persisted
+  and shareable — and it revealed the retriever (1819 ms) outweighs the LLM
+  (1318 ms), a split askrepo's two hand-wrapped spans hide. askrepo's tracer
+  still wins on zero-dependency and no-data-leaves-the-box; LangSmith wins on
+  structure, I/O capture, and persistence. (Trace + visual: PLAN.md phase 4.)
 
 ## What the framework cost
 
