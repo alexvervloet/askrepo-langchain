@@ -27,6 +27,7 @@ for pkg in (
     "langchain",
     "langgraph",
     "langchain_chroma",
+    "langchain_community",  # TextLoader for the phase-1 `load` stage (sunset; see PLAN)
     "langchain_anthropic",
     "langchain_voyageai",
     "langchain_openai",
