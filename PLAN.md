@@ -183,10 +183,18 @@ for as long as the terminal buffer lasts.
 
 ## Phase 5 — the write-up (done when COMPARISON.md stands alone)
 
-- [ ] COMPARISON.md complete: **bought / cost / when to choose which**
-- [ ] cross-link from the portfolio README / capstone LEARNINGS
-- [ ] sanity check: could someone who never read the capstone follow it? fix
-      until yes
+- [x] COMPARISON.md complete: **bought / cost / when to choose which** — the
+      "when to choose which" verdict is *which layer*, not which framework:
+      LangGraph for the stateful agent/runtime (durable resume is a real
+      capability), a thin/explicit RAG core for retrieval (the port tied on
+      accuracy and cost the hybrid + cost-visibility + control over defaults).
+- [x] cross-link — this repo's README headlines COMPARISON.md; a pointer added
+      to the capstone's LEARNINGS (`ask-my-repo/LEARNINGS.md`). There is no
+      top-level portfolio README in `AI/` to link from.
+- [x] sanity check: rewrote the intro + "The setup" so a reader who never saw
+      the capstone gets the app, corpus, gold set, and what "from scratch vs
+      framework" means before any result; glossed hit@k and spelled out
+      RecursiveCharacterTextSplitter. It stands alone.
 
 ## Notes / gotchas discovered along the way
 
