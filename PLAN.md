@@ -85,3 +85,15 @@ one doesn't, in three sentences and a screenshot.
 ## Notes / gotchas discovered along the way
 
 (keep a running log here — this becomes the best part of COMPARISON.md)
+
+- **LangSmith is region-sharded and nothing defaults to APAC.** The account
+  lives in the APAC region, so the key only works against
+  `https://apac.api.smith.langchain.com` — the SDK, the docs' curl examples,
+  and `LANGSMITH_ENDPOINT`-less clients all default to US and return a bare
+  403 "Forbidden" (not 401), which reads like a permissions bug, not a routing
+  bug. A bogus key gets the *same* 403, so you can't binary-search it from
+  status codes alone. Every LangSmith-touching run needs
+  `LANGSMITH_ENDPOINT=https://apac.api.smith.langchain.com` exported.
+  Verified 2026-07-11: traced a fake-model chain into project `asklc-smoke`
+  and read the run back via `list_runs`. Key is in the Keychain as
+  `deepdives:LANGSMITH_API_KEY` (secrun doesn't inject it yet).
