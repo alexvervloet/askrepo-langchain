@@ -4,6 +4,10 @@
 
 langchain            # chains, retrievers, LCEL
 langgraph            # the stateful agent layer (phase 3)
+langgraph-checkpoint-sqlite  # DURABLE checkpointer (phase 3 resume). NB: the
+                     # base langgraph-checkpoint ships only an in-memory saver;
+                     # cross-process resume — the whole point vs the hand-rolled
+                     # loop — needs this separate package. Logged in PLAN gotchas.
 langchain-chroma     # vector store for the RAG port (phase 1)
 langchain-community  # TextLoader for the `load` stage. NB: 0.4.x prints a
                      # "being sunset / no longer maintained" DeprecationWarning
