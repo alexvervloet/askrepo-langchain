@@ -5,6 +5,11 @@
 langchain            # chains, retrievers, LCEL
 langgraph            # the stateful agent layer (phase 3)
 langchain-chroma     # vector store for the RAG port (phase 1)
+langchain-community  # TextLoader for the `load` stage. NB: 0.4.x prints a
+                     # "being sunset / no longer maintained" DeprecationWarning
+                     # on import — reading a text file the framework way pulls
+                     # in a package its own maintainers are winding down. Logged
+                     # in PLAN.md gotchas; it's a phase-1 "cost" finding.
 
 # Providers — same contract as askrepo (PROVIDER=claude|openai).
 # Keyless smoke (phase 0) needs NONE of these to do anything real:
