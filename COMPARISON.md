@@ -1,17 +1,69 @@
 # askrepo vs LangChain — the same app twice, honestly
 
-*(Filled in as the phases in [PLAN.md](PLAN.md) complete. Skeleton below is
-the contract for what this document must answer.)*
+**askrepo** is a command-line tool that answers questions about a code
+repository with grounded, cited answers: ask *"where is retrieval
+implemented?"* and it replies from the actual files, each claim tagged
+`(path:line)`, or declines with *"Not in this corpus."* when the answer isn't
+there. Its [capstone version](https://github.com/alexvervloet/ask-my-repo) is
+built **from scratch** — a hand-written chunker, its own JSON index, a
+vector+keyword hybrid retriever, and a hand-rolled agent loop, no framework.
+
+This project (**asklc**) rebuilds the identical tool on **LangChain +
+LangGraph** and measures the two against each other, to answer the question job
+descriptions keep implying: *what does the framework actually buy — and cost —
+versus code you control?* Everything below is evidence from running both, not
+opinion. Depth lives in [PLAN.md](PLAN.md) (per-phase tables, running gotcha
+log) and [LESSONS.md](LESSONS.md); this document is the standalone verdict.
 
 ## The setup
 
-Same corpus, same gold questions, same provider and k. One implementation is
-the capstone's from-scratch code; the other is LangChain + LangGraph. Any
-difference in behavior is attributable to the framework.
+- **The app.** Index a corpus → ask → retrieve the most relevant chunks →
+  answer with `(path:line)` citations, or decline when the corpus doesn't
+  contain it. There's also an **agent** mode that answers by *searching*
+  (grep/read tools) instead of embedding.
+- **The corpus.** A 16-repo technical series (~400 markdown + python files).
+  Both implementations index the byte-identical file set.
+- **The gold set.** 40 questions in four categories — *locator* ("which part
+  covers X?"), *concept*, *code* (about specific functions), *cross-dive* —
+  each with expected files and key points; 8 are deliberately unanswerable and
+  should be declined. Reused verbatim from the capstone.
+- **The controls.** Same corpus, same models (`gpt-4o-mini` answers,
+  `text-embedding-3-small` embeds), same `k=5`, and the **prompt contract
+  copied verbatim** into the port. One shared `gpt-4o-mini` judge grades both
+  arms. So any behavioral difference is the framework's, not the setup's.
+- **What "from scratch" vs "framework" means, concretely:**
+
+  | | from scratch (askrepo) | framework (asklc) |
+  |---|---|---|
+  | load | `os.walk` + `open` | `TextLoader` |
+  | chunk | structure-aware, line-tracked | `RecursiveCharacterTextSplitter` |
+  | store | one JSON file, vectors inline | `Chroma` |
+  | retrieve | cosine **+ BM25**, blended | `as_retriever` (vector-only) |
+  | answer | assemble + prompt + stream | LCEL `retrieve \| prompt \| model \| parse` |
+  | agent | a hand-written `while` loop | a LangGraph `StateGraph` + checkpointer |
 
 ## Stage-by-stage mapping
 
-*(final table from PLAN.md phase 1, plus prose on the surprises)*
+Functional lines per stage (comments/docstrings excluded), and the one thing
+that differs most. Full detail + the defaults hunt is in PLAN.md phase 1.
+
+| stage | from scratch | framework | headline difference |
+|---|---|---|---|
+| load | ~30 | ~25 | `TextLoader` needs the **sunset** `langchain-community`; the walk/filter is still yours either way |
+| chunk | ~55 | ~25 | **characters, not lines**; no `(path:line)` citations at all unless you opt into position tracking |
+| embed | ~25 | ~6 | one call vs a batch loop — but you **can't price the build**, the token count isn't exposed |
+| store | ~15 | ~13 | Chroma defaults to **L2, not cosine** — it changes rankings, silently |
+| retrieve | ~90 | ~2 | the 90 lines bought a **hybrid**; the stock retriever is vector-only |
+| answer | ~50 | ~30 | LCEL is tidy; token-budgeted assembly has no default and is DIY |
+
+**The surprise is that the LOC win is lopsided and misleading.** Retrieval
+collapses from ~90 lines to ~2 — but those 90 lines *were* the vector+BM25
+hybrid, and the eval below shows it earns real wins. Meanwhile load and chunk
+barely shrink, because the directory walk, the citation line-recovery (the
+splitter tracks a character offset, not a line), and the cosine override all had
+to be written back by hand. So "the framework writes less code" holds only at
+the one stage where writing less code also means *doing less* — and that stage
+is the one where doing less measurably costs you.
 
 ## What the framework bought
 
@@ -67,16 +119,15 @@ difference in behavior is attributable to the framework.
 ## Eval results
 
 40 gold questions, both implementations, one shared gpt-4o-mini judge, k=5,
-same DeepDives corpus. askrepo runs its real hybrid retrieval (blend=0.7);
-asklc runs the stock vector `as_retriever` — because vector-only *is* the
-framework default we're measuring. (`evals/parity.py`, `evals/parity.run.json`,
-2026-07-11.)
+same corpus. askrepo runs its real hybrid retrieval (blend=0.7); asklc runs the
+stock vector `as_retriever` — because vector-only *is* the framework default
+we're measuring. (`evals/parity.py`, `evals/parity.run.json`, 2026-07-11.)
 
 | metric | askrepo | asklc |
 |---|---|---|
 | judged correctness (32 answerable) | 0.814 | 0.800 |
 | decline accuracy (8 negatives) | 1.000 | 1.000 |
-| retrieval hit@k | 0.857 | 0.857 |
+| retrieval hit@k (an expected file made the top k) | 0.857 | 0.857 |
 | tokens/answer p50 (in+out) | 2546 | 2419 |
 | citation resolve / match | 0.881 / 0.667 | 0.951 / 0.732 |
 
@@ -88,7 +139,8 @@ differences cancel. Two mechanisms pull opposite ways:
   by exact terms. On `code-07` ("when does the agent loop stop?") asklc's
   vector-only retriever returned the *same README chunk five times* and
   declined; askrepo's keyword signal surfaced the exact `EXERCISES.md` line.
-- **asklc's larger RCTS chunks** win when the answer is one line inside a
+- **asklc's larger character-window chunks** (from
+  `RecursiveCharacterTextSplitter`) win when the answer is one line inside a
   function that askrepo's per-`def` chunker splits off. On `code-03`
   (cosine_similarity of an all-zero vector) asklc's 1500-char chunk kept the
   whole function together and cited it; askrepo retrieved a different slice of
@@ -109,4 +161,29 @@ aggregate score won't warn you — only the per-question view does.
 
 ## When I'd choose which
 
-*(the paragraph an interviewer is actually asking for)*
+The honest answer isn't "framework vs no framework" — it's **which layer**.
+
+**Reach for the framework (specifically LangGraph) for the agent/runtime.** The
+strongest result in this whole comparison is durable persistence and
+cross-process resume: a real capability the hand-rolled loop *cannot* have
+without building a serializer, and one that came with per-node retries,
+streaming, and checkpoint time-travel attached. If you're shipping anything
+stateful — an agent that must survive a crash, a long tool loop, a resumable
+job — LangGraph earns its weight. That's the part production teams actually run,
+and it's where the abstraction is buying capability, not just syntax.
+
+**Keep the RAG core thin and explicit — hand-rolled, or a minimal vector
+library.** The RAG port did not buy accuracy; it *tied*. And it cost the hybrid
+retrieval that measurably wins questions, the ability to price an index build,
+and a stack of silent defaults (L2 not cosine, k=4, no citations) you have to
+discover in source. When you care about specific retrieval behavior — hybrid
+search, custom chunking, cost visibility — the framework's convenience is
+working against you, hiding exactly the knobs you need. `LangChain`-the-RAG-chain
+was the weakest value in this project; `LangGraph`-the-runtime was the strongest.
+
+**And regardless of which you pick:** the framework's defaults are decisions
+someone else made for you, often invisibly and often not the one you'd choose.
+Read the source for the numbers, diff your evals per-question, and never let a
+matched aggregate convince you two systems are equivalent — here it hid twelve
+questions' worth of offsetting differences. The framework is a fine place to
+start and a poor place to stop reading.
