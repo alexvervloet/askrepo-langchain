@@ -32,17 +32,45 @@ same k — differences must come from the framework, not the setup.
 
 | stage | askrepo (module, ~LOC) | LangChain (component, ~LOC) | defaults that differ |
 |---|---|---|---|
-| load | | | |
-| chunk | | | |
-| embed | | | |
-| store/index | | | |
-| retrieve | | | |
-| assemble+answer | | | |
+| load | `indexer.collect_chunks` ~30 (os.walk, ext allow-list, skip-dirs, open) | `corpus.load_documents` ~25 (`TextLoader` per file, *same* walk) | `TextLoader` lives in `langchain-community`, which prints a "being sunset / no longer maintained" warning on import; `DirectoryLoader`'s glob+exclude can't cleanly express the allow-list, so the walk stays hand-rolled either way |
+| chunk | `indexer.chunk_markdown` / `chunk_python` + `_windows`/`_emit` ~55 (structure-aware: heading / `def`·`class`, line-tracked) | `corpus.chunk_documents` ~25 (`RecursiveCharacterTextSplitter`) | **characters not lines**; generic separator ladder `["\n\n","\n"," ",""]` vs heading / object boundaries; default size/overlap **4000/200 chars** (we set 1500/200) vs askrepo's explicit **60/10 lines**; `add_start_index` **defaults False** → no position tracking at all; when on it's a char *offset*, not a line → we convert offset→line by hand for citations |
+| embed | `indexer.build_index` loop + `providers.embed` ~25 (batch 100, round 6dp, `input_type` by hand) | `rag.build_index` → `get_embeddings` ~6 (one call) | Voyage batch default **1000** vs 100; `truncation` **defaults True** vs askrepo never truncates; `input_type` auto-set (`document`/`query`) vs explicit; **no token count surfaced** through `embed_documents` → an index build can't be priced without reaching past the abstraction |
+| store/index | `indexer.build_index` `json.dump` ~15 (one human-readable JSON, vectors inline) | `Chroma.from_documents` + `_write_meta` ~13 (persisted Chroma dir + sidecar) | container is a SQLite+HNSW dir vs one JSON file; the embedding **stack has no slot in Chroma** → carried in a sidecar so query-time uses the same model; **distance metric default L2** (chromadb HNSW) vs askrepo's cosine → overridden via `hnsw:space=cosine` |
+| retrieve | `retrieve.py` cosine + BM25, min-max blended ~90 (hybrid, `blend=0.7`, `k=5`) | `store.as_retriever(search_kwargs={"k":k})` + `.invoke` ~2 | **vector-only** — no BM25 blend in the box (would need `EnsembleRetriever`+`BM25Retriever` to match), so exact-match terms lose the keyword signal; `k` **defaults 4** (`langchain_chroma.DEFAULT_K`) vs 5 → overridden; scores hidden unless you call `similarity_search_with_score`; no score threshold either way |
+| assemble+answer | `answer.prepare` + `assemble.py` + `prompts.build_messages` + `providers.complete` ~50 | `rag.make_chain`/`answer` + `prompt.PROMPT` ~30 (LCEL `retrieve \| prompt \| model \| parse`) | token-budgeted greedy assembly (`assemble.py`) has **no framework default** — the k docs are just joined; streaming + `usage`/cost that `providers.complete` surfaces are extra wiring you add back in LCEL |
 
-Questions to answer in writing: which knobs did askrepo make explicit that the
-framework defaults silently (chunk size, overlap, separators, k, score
-threshold)? Where did you have to read LangChain *source* rather than docs to
-find out what a component actually does?
+### Answers (the point of the phase)
+
+**Which knobs did askrepo make explicit that the framework defaults silently?**
+Almost all of them — and the silent default is often *not* what askrepo chose:
+
+- **chunk size / overlap** — framework 4000/200 *chars*; askrepo 60/10 *lines*.
+  At the default 4000, every file in a small corpus is one unsplit chunk.
+- **separators** — framework `["\n\n","\n"," ",""]` (generic); askrepo splits on
+  markdown headings and python `def`/`class`, so a chunk is one *thing*.
+- **position tracking** — framework `add_start_index=False`, i.e. citations are
+  impossible until you opt in, and even then it's a char offset, not a line.
+- **distance metric** — Chroma defaults to **L2**; askrepo uses cosine. Silent,
+  and it changes the ranking, not just the numbers. The nastiest default here.
+- **k** — Chroma retriever defaults to **4**; askrepo's explicit default is 5.
+- **hybrid blend** — askrepo's `blend=0.7` (vector+BM25) has *no* framework
+  analogue; the stock retriever is vector-only, so this knob simply vanishes.
+- **embedding batch / truncation / input_type** — Voyage defaults 1000 / True /
+  auto; askrepo sets 100 / never / explicit.
+
+**Where did I have to read LangChain *source* rather than docs?** Every default
+in the table above came from source, not the component's docstring:
+
+- `chunk_size=4000`, `chunk_overlap=200`, `separators=[…]` —
+  `langchain_text_splitters/base.py` and `character.py`.
+- `DEFAULT_K = 4` — `langchain_chroma/vectorstores.py`.
+- Chroma's L2 distance default (`hnsw:space`) — down in **chromadb**, not
+  surfaced by `langchain-chroma` at all; you learn it by getting wrong rankings.
+- Voyage `batch_size=1000`, `truncation=True`, and the auto
+  `document`/`query` `input_type` mapping — `langchain_voyageai/embeddings.py`;
+  none of it is visible from the retriever API you actually call.
+- `search_type="similarity"` default + allowed types —
+  `langchain_core/vectorstores/base.py`.
 
 ## Phase 2 — eval parity (done when both columns are filled)
 
@@ -97,3 +125,43 @@ one doesn't, in three sentences and a screenshot.
   Verified 2026-07-11: traced a fake-model chain into project `asklc-smoke`
   and read the run back via `list_runs`. Key is in the Keychain as
   `deepdives:LANGSMITH_API_KEY` (secrun doesn't inject it yet).
+
+- **Chroma's default distance is L2, not cosine — and nothing tells you.**
+  `langchain-chroma` never mentions it; the default lives in chromadb's HNSW
+  config (`hnsw:space="l2"`). askrepo ranks by cosine, so an unconfigured
+  Chroma silently ranks in a *different geometry* — same vectors, different
+  neighbours. Fixed by passing `collection_metadata={"hnsw:space":"cosine"}`
+  to `Chroma.from_documents`. This is the one default that changes answers
+  rather than just numbers. (phase 1)
+
+- **`RecursiveCharacterTextSplitter` doesn't track position by default.**
+  `add_start_index` defaults to `False`, so out of the box a chunk has no idea
+  where it came from — citations are impossible until you opt in. And when you
+  do, it's a *character offset* (`metadata["start_index"]`), not a line, so
+  `(path:line)` citations need an offset→line conversion against the parent
+  document that askrepo's line-tracking chunker never needed. (phase 1)
+
+- **The stock vector retriever is vector-only.** `store.as_retriever()` has no
+  BM25/keyword blend — askrepo's `blend=0.7` hybrid (great for module names,
+  flags, error strings) has no framework analogue short of wiring up
+  `EnsembleRetriever` + `BM25Retriever`. Default `k` is 4, not askrepo's 5.
+  Expect this to be the main source of any phase-2 retrieval-score gap. (phase 1)
+
+- **`langchain-community` is being sunset.** The canonical `TextLoader` for the
+  `load` stage imports from `langchain-community`, which prints a
+  DeprecationWarning on import: "being sunset / no longer actively maintained,
+  migrate to standalone integration packages." Reading a text file the
+  framework way pulls in a package its own maintainers are winding down (and
+  `langchain-classic` + sqlalchemy as transitive deps). (phase 1)
+
+- **Embeddings don't surface a token count.** `providers.embed` in askrepo
+  returns `(vectors, tokens)` so every index build is priced. LangChain's
+  `Embeddings.embed_documents` returns only vectors — the token/cost line
+  askrepo prints on `index` can't be reproduced without bypassing the
+  abstraction and re-tokenizing. (phase 1)
+
+- **Phase-1 scope note.** The keyless (`PROVIDER=mock`) path is verified
+  end-to-end: `index` → deterministic-fake embed → Chroma → `ask` → LCEL
+  chain. A real Voyage/Claude run is deferred to phase 2, where eval parity
+  actually needs it; the mapping/defaults analysis above (this phase's DoD)
+  came from reading installed source, not from a paid run.
