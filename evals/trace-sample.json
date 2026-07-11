@@ -1,0 +1,69 @@
+{
+ "question": "Which deep dive covers barge-in, and what is barge-in?",
+ "answer": "The deep dive that covers barge-in is **Realtime Voice** (README.md:52). Barge-in refers to handling interruptions in a conversational voice system, allowing users to interject during a speech interaction (README.md:52).",
+ "run_id": "019f507a-eead-7a42-8d81-0283e3282cdc",
+ "project": "asklc-phase4",
+ "url": "https://apac.smith.langchain.com/o/0af4692c-a2ba-4288-93e2-4245af9374e6/projects/p/a8432011-98b4-474d-8df5-43e9aa85477e/r/019f507a-eead-7a42-8d81-0283e3282cdc?poll=true",
+ "enrichment": {
+  "total_tokens": 2119,
+  "prompt_tokens": 2072,
+  "completion_tokens": 47,
+  "total_cost": 0.000339
+ },
+ "tree": [
+  {
+   "depth": 0,
+   "name": "RunnableSequence",
+   "type": "chain",
+   "ms": 3148.2
+  },
+  {
+   "depth": 1,
+   "name": "RunnableParallel<context,question>",
+   "type": "chain",
+   "ms": 1820.9
+  },
+  {
+   "depth": 2,
+   "name": "RunnableSequence",
+   "type": "chain",
+   "ms": 1820.1
+  },
+  {
+   "depth": 3,
+   "name": "VectorStoreRetriever",
+   "type": "retriever",
+   "ms": 1818.9
+  },
+  {
+   "depth": 3,
+   "name": "format_docs",
+   "type": "chain",
+   "ms": 0.4
+  },
+  {
+   "depth": 2,
+   "name": "RunnablePassthrough",
+   "type": "chain",
+   "ms": 0.2
+  },
+  {
+   "depth": 1,
+   "name": "ChatPromptTemplate",
+   "type": "prompt",
+   "ms": 1.8
+  },
+  {
+   "depth": 1,
+   "name": "ChatOpenAI",
+   "type": "llm",
+   "ms": 1318.0
+  },
+  {
+   "depth": 1,
+   "name": "StrOutputParser",
+   "type": "parser",
+   "ms": 0.2
+  }
+ ]
+}
