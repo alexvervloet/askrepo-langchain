@@ -4,3 +4,4 @@ __pycache__/
 .DS_Store
 .chroma/
 results/
+.agent-resume.sqlite
