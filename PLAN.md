@@ -156,9 +156,30 @@ and the security boundary were a straight reuse — identical in both.
 
 ## Phase 4 — observability (stretch)
 
-One traced run with LangSmith (or the local tracer) next to the observability
-dive's hand-rolled approach: what a bought trace shows that the hand-rolled
-one doesn't, in three sentences and a screenshot.
+- [x] One LangSmith-traced RAG run, read back through the SDK and dumped
+      (`evals/trace_demo.py` → `evals/trace-sample.json`), next to askrepo's
+      hand-rolled `Trace.span()` (askrepo/ops.py). Visual (the "screenshot"):
+      artifact <https://claude.ai/code/artifact/c50563d4-9ea6-4490-bff5-33ab4054cca4>,
+      plus the live run URL in the trace dump. (This environment has no browser
+      to screenshot the LangSmith UI, so the artifact renders the same
+      SDK-read data; the run URL is there to open/screenshot directly.)
+
+**What the bought trace shows that the hand-rolled one doesn't (3 sentences):**
+LangSmith traced all **nine** runnables in the LCEL chain automatically, with
+none of our own tracing code, where askrepo records only the **two** spans we
+remembered to wrap by hand. That granularity surfaces what a coarse span hides:
+the vector **retriever (1819 ms)** — mostly the OpenAI query-embedding
+round-trip — is **slower than the LLM call (1318 ms)**, a split askrepo's single
+`retrieve` span can't show. And every step's real inputs and outputs (the
+retrieved chunks, the exact assembled prompt) are captured and kept, queryable
+and shareable by URL, where askrepo's trace is one JSON line to stderr that
+scrolls away.
+
+Honest scope: askrepo *does* record total tokens/cost — as flat trace
+attributes — so that isn't the difference. The difference is the automatic
+**nested structure**, **per-step I/O**, and **persistence/shareability**; the
+hand-rolled tracer gives you timing on the spans you thought to wrap, and only
+for as long as the terminal buffer lasts.
 
 ## Phase 5 — the write-up (done when COMPARISON.md stands alone)
 
@@ -181,7 +202,17 @@ one doesn't, in three sentences and a screenshot.
   `LANGSMITH_ENDPOINT=https://apac.api.smith.langchain.com` exported.
   Verified 2026-07-11: traced a fake-model chain into project `asklc-smoke`
   and read the run back via `list_runs`. Key is in the Keychain as
-  `deepdives:LANGSMITH_API_KEY` (secrun doesn't inject it yet).
+  `deepdives:LANGSMITH_API_KEY` (secrun.sh injects it as an optional key).
+
+- **Reading a trace back in-process: `collect_runs` + `wait_for_all_tracers`.**
+  Tracing submits in the background, so a naive `list_runs` right after
+  `invoke` races the upload and returns nothing. `collect_runs()` (from
+  `langchain_core.tracers.context`) hands you the in-memory run tree
+  immediately — structure + per-span latency, no network — and
+  `wait_for_all_tracers()` blocks until the upload flushes so the server-side
+  enriched run (token totals, auto-priced cost) is queryable via
+  `Client.read_run`. The enriched fields lag a second or two behind the
+  in-memory tree; retry `read_run` a few times. (phase 4)
 
 - **Chroma's default distance is L2, not cosine — and nothing tells you.**
   `langchain-chroma` never mentions it; the default lives in chromadb's HNSW
