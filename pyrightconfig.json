@@ -1,0 +1,12 @@
+{
+    "typeCheckingMode": "basic",
+    "pythonVersion": "3.13",
+    "venvPath": ".",
+    "venv": ".venv",
+    "extraPaths": [
+        ".",
+        "../DeepDives/deep-dive-capstone",
+        "../DeepDives/deep-dive-capstone/evals"
+    ],
+    "exclude": ["**/__pycache__", ".venv", ".chroma"]
+}
